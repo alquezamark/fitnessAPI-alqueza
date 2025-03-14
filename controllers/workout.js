@@ -1,101 +1,108 @@
-const Workout = require("../models/Workout");
+const Workout = require('../models/Workout');
 
-// Create a new workout
-module.exports.addWorkout = async (req, res) => {
-    try {
-        const { name, duration } = req.body;
-        
-        if (!name || !duration) {
-            return res.status(400).json({ error: "Name and duration are required." });
-        }
+module.exports.addWorkout = (req, res) => {
+    const { name, duration } = req.body;
+    const userId = req.user.id;
 
-        const newWorkout = new Workout({
-            name,
-            duration,
-            userId: req.user.id
+    if (!name) {
+        return res.status(400).send({ error: "Workout name is required" });
+    }
+
+    if (!duration) {
+        return res.status(400).send({ error: "Workout duration is required" });
+    }
+
+    let newWorkout = new Workout({
+        userId,
+        name,
+        duration,
+        status: "pending"
+    });
+
+    newWorkout.save()
+        .then(workout => res.status(201).send(workout))
+        .catch(err => {
+            console.error("Error in saving workout: ", err);
+            return res.status(500).send({ error: "Internal server error" });
         });
-        
-        await newWorkout.save();
-        res.status(201).json({ message: "Workout added successfully." });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Failed to add workout." });
-    }
 };
 
-// Get all workouts for the logged-in user
-module.exports.getMyWorkouts = async (req, res) => {
-    try {
-        const workouts = await Workout.find({ userId: req.user.id });
-        res.status(200).json(workouts);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Failed to retrieve workouts." });
-    }
-};
+module.exports.getMyWorkouts = (req, res) => {
 
-// Update a workout
-module.exports.updateWorkout = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, duration, status } = req.body;
-        
-        const workout = await Workout.findOneAndUpdate(
-            { _id: id, userId: req.user.id },
-            { name, duration, status },
-            { new: true }
-        );
-        
-        if (!workout) {
-            return res.status(404).json({ error: "Workout not found." });
+    Workout.find({userId: req.user.id})
+    .then(workouts => {
+
+        if (workouts.length > 0){
+            return res.status(200).send({ workouts });
+        }
+        else {
+
+            return res.status(200).send({ message: 'No Workouts found.' })
         }
 
-        res.status(200).json({ message: "Workout updated successfully.", workout });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Failed to update workout." });
-    }
+    }).catch(err => res.status(500).send({ error: 'Error finding Workouts.' }));
+
 };
 
-// Delete a workout
-module.exports.deleteWorkout = async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        const workout = await Workout.findOneAndDelete({ _id: id, userId: req.user.id });
-        
-        if (!workout) {
-            return res.status(404).json({ error: "Workout not found." });
-        }
-        
-        res.status(200).json({ message: "Workout deleted successfully." });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Failed to delete workout." });
-    }
+module.exports.updateWorkout = (req, res) => {
+    let workoutUpdates = {
+        name: req.body.name,
+        duration: req.body.duration,
+    };
+
+    return Workout.findById(req.params.id) // Check if workout exists first
+        .then(existingWorkout => {
+            if (!existingWorkout) {
+                return res.status(404).send({ error: 'Workout not found' });
+            }
+
+            return Workout.findByIdAndUpdate(req.params.id, workoutUpdates, { new: true }) // Return updated document
+                .then(updatedWorkout => res.status(200).send({ 
+                    message: 'Workout updated successfully', 
+                    updatedWorkout 
+                }));
+        })
+        .catch(err => {
+            console.error("Error updating workout:", err);
+            return res.status(500).send({ error: 'Error updating workout.' });
+        });
+};
+
+module.exports.deleteWorkout = (req, res) => {
+    return Workout.deleteOne({ _id: req.params.id })
+        .then(deletedResult => {
+            if (deletedResult.deletedCount === 0) { // Corrected check
+                return res.status(404).send({ error: 'No Workout found to delete' });
+            }
+
+            return res.status(200).send({ message: 'Workout deleted successfully' });
+        })
+        .catch(err => {
+            console.error("Error deleting workout:", err);
+            return res.status(500).send({ error: 'Error deleting workout.' });
+        });
 };
 
 
+module.exports.completeWorkoutStatus = (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
 
-// update workout status
-module.exports.completeWorkoutStatus = async (req, res) => {
-    try {
-        const { id } = req.params; // Get workout ID from URL
-        const workout = await Workout.findById(id);
+    Workout.findOne({ _id: id, userId })
+        .then(workout => {
+            if (!workout) {
+                return res.status(404).send("Workout not found" );
+            }
 
-        if (!workout) {
-            return res.status(404).json({ message: "Workout not found" });
-        }
+            if (workout.status === 'completed') {
+                return res.status(400).send({ error: "Workout is already completed" });
+            }
 
-        if (workout.status === "completed") {
-            return res.status(400).json({ message: "Workout is already completed" });
-        }
+            workout.status = 'completed';
 
-        workout.status = "completed";
-        await workout.save();
-
-        res.status(200).json({ message: "Workout status updated to completed", workout });
-    } catch (error) {
-        res.status(500).json({ message: "Server error", error: error.message });
-    }
+            workout.save()
+                .then(updatedWorkout => res.status(200).send(updatedWorkout))
+                .catch(err => res.status(500).send({ error: "Error in completing workout" }));
+        })
+        .catch(err => res.status(500).send({ error: err.message }));
 };

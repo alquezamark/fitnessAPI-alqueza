@@ -1,7 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-require("dotenv").config();
+
 
 // Initialize Express App
 const app = express();
@@ -9,7 +9,7 @@ app.use(express.json());
 app.use(cors());
 
 // Database Connection
-mongoose.connect(process.env.MONGODB_STRING);
+mongoose.connect("mongodb+srv://admin:admin123@wdc028-course-booking.4oubu.mongodb.net/fitness-tracker?retryWrites=true&w=majority");
 mongoose.connection.once("open", () => console.log("Now connected to MongoDB Atlas."));
 
 // Routes Middleware
